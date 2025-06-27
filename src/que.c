@@ -155,3 +155,29 @@ void destroyQue(Que Q) {
     free(Q->arr);
     free(Q);
 }
+
+// src/que.c
+
+// ... (existing function implementations)
+
+int get_history_size(Que Q) {
+    if (!Q) return 0;
+    return Q->numElems;
+}
+
+Instruction get_kth_history_element_silent(Que Q, int k) {
+    if (!Q || k <= 0 || k > Q->numElems) {
+        return NULL; // Return NULL silently
+    }
+    // k=1 is latest, k=2 is second latest, etc.
+    int target_index = (Q->latest - (k - 1) + Q->capacity) % Q->capacity;
+
+    Instruction ins_copy = (Instruction)malloc(sizeof(char) * MAX_INPUT_LEN);
+    if (!ins_copy) {
+        print_shell_perror("malloc for history element copy failed");
+        return NULL;
+    }
+    strncpy(ins_copy, Q->arr[target_index], MAX_INPUT_LEN - 1);
+    ins_copy[MAX_INPUT_LEN - 1] = '\0';
+    return ins_copy; // Caller must free this
+}

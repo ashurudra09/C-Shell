@@ -1,4 +1,110 @@
 #include "shell_headers.h"
+#include <termios.h> // Required for terminal manipulation
+
+// Forward declaration for the prompt function, needed inside get_line_with_history
+void display_shell_prompt(const char* home_dir, const char* last_command_name, long time_taken);
+
+
+/**
+ * @brief Reads a line of input with history navigation enabled.
+ * Replaces fgets for interactive input.
+ * @param buffer The buffer to store the input line.
+ * @param size The size of the buffer.
+ * @param history The command history queue.
+ * @param home_dir The home directory for displaying the prompt correctly.
+ * @return 0 on success (Enter pressed), -1 on EOF (Ctrl+D).
+ */
+int get_line_with_history(char* buffer, int size, Que history, const char* home_dir) {
+    // 1. Set terminal to non-canonical mode
+    struct termios old_term, new_term;
+    tcgetattr(STDIN_FILENO, &old_term);
+    new_term = old_term;
+    new_term.c_lflag &= ~(ICANON | ECHO); // Disable canonical mode and echoing
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
+
+    int buffer_pos = 0;
+    buffer[0] = '\0';
+    int c;
+
+    int history_index = 0; // 0 = new command, 1 = latest, etc.
+    char* temp_command_storage = NULL; // To store user's partial command
+
+    while (1) {
+        c = getchar();
+
+        if (c == EOF || c == 4) { // Ctrl+D
+            if (buffer_pos == 0) {
+                tcsetattr(STDIN_FILENO, TCSANOW, &old_term); // Restore terminal
+                return -1; // Signal EOF
+            }
+        } else if (c == '\n') { // Enter key
+            free(temp_command_storage);
+            tcsetattr(STDIN_FILENO, TCSANOW, &old_term); // Restore terminal
+            printf("\n");
+            return 0;
+        } else if (c == 127 || c == '\b') { // Backspace
+            if (buffer_pos > 0) {
+                buffer_pos--;
+                buffer[buffer_pos] = '\0';
+                printf("\b \b"); // Move cursor back, write space, move back again
+                fflush(stdout);
+            }
+        } else if (c == '\x1b') { // Escape sequence (arrow keys)
+            // Read the next two characters
+            if (getchar() == '[') {
+                switch (getchar()) {
+                    case 'A': // Up arrow
+                        if (history_index < get_history_size(history)) {
+                            if (history_index == 0) {
+                                // Save the current line buffer before overwriting
+                                free(temp_command_storage);
+                                temp_command_storage = strdup(buffer);
+                            }
+                            history_index++;
+                            char* hist_cmd = get_kth_history_element_silent(history, history_index);
+                            if (hist_cmd) {
+                                strncpy(buffer, hist_cmd, size - 1);
+                                buffer[size - 1] = '\0';
+                                buffer_pos = strlen(buffer);
+                                free(hist_cmd);
+                            }
+                        }
+                        break;
+                    case 'B': // Down arrow
+                        if (history_index > 0) {
+                            history_index--;
+                            if (history_index == 0) {
+                                // Restore the original command
+                                strncpy(buffer, temp_command_storage ? temp_command_storage : "", size - 1);
+                                buffer[size-1] = '\0';
+                            } else {
+                                char* hist_cmd = get_kth_history_element_silent(history, history_index);
+                                if (hist_cmd) {
+                                    strncpy(buffer, hist_cmd, size - 1);
+                                    buffer[size - 1] = '\0';
+                                    free(hist_cmd);
+                                }
+                            }
+                            buffer_pos = strlen(buffer);
+                        }
+                        break;
+                }
+                // Redraw the line
+                printf("\r"); // Carriage return to start of line
+                display_shell_prompt(home_dir, "", -1); // Redraw prompt
+                printf("%s\033[K", buffer); // Print buffer and clear rest of line
+                fflush(stdout);
+            }
+        } else if (isprint(c)) { // Printable character
+            if (buffer_pos < size - 1) {
+                buffer[buffer_pos++] = c;
+                buffer[buffer_pos] = '\0';
+                putchar(c);
+                fflush(stdout);
+            }
+        }
+    }
+}
 
 /**
  * @brief Prints a formatted error message to stderr.
@@ -135,31 +241,21 @@ int main() {
         command_name_for_prompt[0] = '\0';
         time_taken_for_prompt = -1;
 
-        if (fgets(input_line, sizeof(input_line), stdin) == NULL) {
-            if (feof(stdin)) { // EOF (Ctrl+D)
-                printf("\nGoodbye!\n");
-                break;
-            } else { // Some other read error
-                print_shell_perror("fgets failed");
-                break; // Exit on read error
-            }
+        if (get_line_with_history(input_line, sizeof(input_line), history_queue, home_dir) == -1) {
+            // -1 signifies Ctrl+D on an empty line
+            printf("Goodbye!\n");
+            break;
         }
 
         strncpy(original_input_for_history, input_line, sizeof(original_input_for_history) - 1);
         original_input_for_history[sizeof(original_input_for_history) - 1] = '\0';
-        size_t len_hist_copy = strlen(original_input_for_history);
-        if (len_hist_copy > 0 && original_input_for_history[len_hist_copy - 1] == '\n') {
-            original_input_for_history[len_hist_copy - 1] = '\0';
-        }
+        // REMOVED: Newline stripping for original_input_for_history is no longer needed.
 
         char mutable_input_line[MAX_INPUT_LEN];
         strncpy(mutable_input_line, input_line, sizeof(mutable_input_line) -1);
         mutable_input_line[sizeof(mutable_input_line)-1] = '\0';
         
-        size_t len_input = strlen(mutable_input_line);
-        if (len_input > 0 && mutable_input_line[len_input - 1] == '\n') {
-            mutable_input_line[len_input - 1] = '\0';
-        }
+        // REMOVED: Newline stripping for mutable_input_line is no longer needed.
         if (strlen(mutable_input_line) == 0) continue;
 
 

@@ -85,4 +85,24 @@ void write_history_to_file(Que Q, const char* homeDir);
  */
 void destroyQue(Que Q);
 
+// include/que.h
+
+// ... (existing function prototypes)
+
+/**
+ * @brief Returns the current number of elements in the history queue.
+ * @param Q The history queue.
+ * @return The number of elements.
+ */
+int get_history_size(Que Q);
+
+/**
+ * @brief Retrieves the k-th element from history without printing errors on failure.
+ * @param Q The history queue.
+ * @param k The 1-based index (1 is the most recent).
+ * @return A new dynamically allocated string, or NULL if k is invalid.
+ *         The caller is responsible for freeing the returned string.
+ */
+Instruction get_kth_history_element_silent(Que Q, int k);
+
 #endif // QUE_H_

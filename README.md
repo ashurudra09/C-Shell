@@ -134,6 +134,8 @@ Manages and re-executes commands from a persistent history.
     peek
     ```
 
+*   **Note:** using `up-arrow` and `down-arrow` shift between past commands using the same list.
+
 ### `proclore`
 Displays information about a process.
 *   **Syntax:** `proclore [<pid>]`
@@ -196,7 +198,6 @@ Run any external command in the background by appending `&`.
 *   Implement piping (`|`) and I/O redirection (`<`, `>`).
 *   Add full job control with `fg`, `bg`, and `jobs` commands.
 *   Introduce tab completion for commands and file paths.
-*   Support arrow-key navigation for command history.
 *   Enhance the parser to handle quoted arguments.
 
 ---

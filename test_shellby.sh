@@ -4,6 +4,7 @@
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # --- Test Environment Setup ---
@@ -74,8 +75,6 @@ echo "5. Warp to home ('~'), print path."
 echo "6. Attempt to warp to a non-existent directory, see error."
 read -p "Press Enter to run 'warp' tests..."
 
-# Use a "here document" to feed commands to shellby
-# We start shellby from the project root.
 ./shellby <<EOF
 pwd
 warp $TEST_DIR/dir1
@@ -188,7 +187,6 @@ echo "4. History should now contain 'pwd' twice."
 echo "5. 'pastevents purge' clears the history."
 read -p "Press Enter to run basic 'pastevents' tests..."
 
-# Clean history file before starting
 rm -f .shellby_history.txt
 
 ./shellby <<EOF
@@ -210,20 +208,55 @@ echo "2. We will restart shellby."
 echo "3. 'pastevents' should show the commands from the previous session."
 read -p "Press Enter to test history persistence..."
 
-# Session 1: Create history
 ./shellby <<EOF
 ls -l
 echo History should persist!
 q
 EOF
 
-# Session 2: Check history
 ./shellby <<EOF
 pastevents
 q
 EOF
 
-read -p "History tests complete. Press Enter to finish."
+read -p "History tests complete. Press Enter to continue..."
+
+
+# --- NEW TEST SECTION ---
+# 6. Testing Arrow-Key History Navigation (Interactive)
+echo -e "\n${GREEN}--- 6. Testing Arrow-Key History Navigation (Interactive) ---${NC}"
+echo "This test is interactive and requires you to press the arrow keys."
+echo "First, we will populate the history with a few distinct commands."
+
+# Clean history first for a predictable state
+rm -f .shellby_history.txt
+
+# Session 1: Populate history for the interactive test
+./shellby <<EOF
+echo "This is the first command"
+ls -F
+echo "This is the third and last command"
+q
+EOF
+
+echo -e "\n${YELLOW}Step 6a: Interactive Test Session${NC}"
+echo "Shellby will now start. Please perform the following actions:"
+echo "1. Press the ${BLUE}UP ARROW${NC}. You should see: 'echo \"This is the third and last command\"'"
+echo "2. Press the ${BLUE}UP ARROW${NC} again. You should see: 'ls -F'"
+echo "3. Press the ${BLUE}UP ARROW${NC} again. You should see: 'echo \"This is the first command\"'"
+echo "4. Press the ${BLUE}DOWN ARROW${NC}. You should see 'ls -F' again."
+echo "5. Press ${BLUE}ENTER${NC}. The 'ls -F' command should execute."
+echo "6. Now, type ${BLUE}'my partial command'${NC} but DO NOT press Enter."
+echo "7. Press the ${BLUE}UP ARROW${NC}. The last history item ('ls -F') should appear, replacing your text."
+echo "8. Press the ${BLUE}DOWN ARROW${NC} until the prompt is empty again. You should see your typed text restored: 'my partial command'"
+echo "9. Finally, type ${BLUE}q${NC} and press ${BLUE}ENTER${NC} to exit and finish the test."
+read -p "Press Enter to begin the interactive test..."
+
+# Session 2: The actual interactive test
+./shellby
+
+read -p "Interactive history test complete. Press Enter to finish."
+
 
 echo -e "\n${BLUE}========================================="
 echo -e "      ALL TESTS HAVE BEEN EXECUTED"
