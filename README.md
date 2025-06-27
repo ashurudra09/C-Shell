@@ -1,6 +1,6 @@
 # Shellby - A Custom Shell in C
 
-Shellby is a lightweight, custom shell implementation written in C. It emulates a core subset of functionalities found in standard Unix shells like `bash`, including built-in commands, command history, and background process management.
+Shellby is a lightweight, custom shell implementation written in C. It emulates a core subset of functionalities found in standard Unix shells like `bash`, including built-in commands, command history, I/O redirection, and background process management.
 
 ---
 
@@ -74,6 +74,29 @@ The script will guide you through a series of automated and interactive tests. I
     ```
 *   **External Command Execution:** Executes any command found in the system's `PATH` (e.g., `ls`, `grep`, `gcc`).
 
+### Piping and I/O Redirection
+Shellby supports connecting commands with pipes and redirecting their standard input and output.
+
+*   **Piping (`|`):** The standard output of the command on the left is connected to the standard input of the command on the right.
+    ```bash
+    # List all files, then count the lines containing ".c"
+    <user@system:~> ls -l | grep .c | wc -l
+    ```
+
+*   **I/O Redirection:** You can redirect `stdin`, `stdout`, and append to files.
+
+| Operator | Description                               | Example                               |
+| :---     | :---------------------------------------- | :------------------------------------ |
+| `>`      | Redirect standard output to a file (overwrite). | `echo "Hello" > output.txt`           |
+| `>>`     | Redirect standard output to a file (append).    | `echo "World" >> output.txt`          |
+| `<`      | Redirect standard input from a file.      | `sort < output.txt`                   |
+
+*   Piping and redirection can be combined:
+    ```bash
+    # Read from input.txt, find lines with 'error', and save to error_log.txt
+    <user@system:~> cat < input.txt | grep "error" > error_log.txt
+    ```
+
 ### `warp`
 Changes the current working directory, similar to `cd`.
 *   **Syntax:** `warp [<path1>] [<path2>] ...`
@@ -82,16 +105,6 @@ Changes the current working directory, similar to `cd`.
     *   `warp -`: Navigates to the previous working directory (OLDPWD).
     *   `warp ..`: Navigates to the parent directory.
     *   Supports multiple arguments, changing into each directory sequentially.
-
-*   **Example:**
-    ```bash
-    <user@system:~> warp src
-    /path/to/project/src
-    <user@system:~/src> warp ..
-    /path/to/project
-    <user@system:~> warp -
-    /path/to/project/src
-    ```
 
 ### `peek`
 Lists files and directories, similar to `ls`. Output is sorted lexicographically.
@@ -119,20 +132,6 @@ Manages and re-executes commands from a persistent history.
 | `pastevents`                | Displays the command history, from oldest to newest.         |
 | `pastevents purge`          | Clears all commands from history (in-memory and on-disk).    |
 | `pastevents execute <index>`| Executes the command at the given index (1 = most recent).   |
-
-*   **Example:**
-    ```bash
-    # After running 'echo hello' and then 'peek'
-    <user@system:~> pastevents
-    echo hello
-    peek
-    <user@system:~> pastevents execute 1
-    # Executes 'peek' again
-    <user@system:~> pastevents
-    echo hello
-    peek
-    peek
-    ```
 
 *   **Note:** using `up-arrow` and `down-arrow` shift between past commands using the same list.
 
@@ -186,18 +185,19 @@ Run any external command in the background by appending `&`.
 
 ## Limitations
 
-*   **No Piping or I/O Redirection:** Does not support `|`, `<`, `>`, or `>>`.
+*   **Built-in Commands in Pipelines:** Built-in commands (`warp`, `peek`, `seek`, `proclore`, `pastevents`) cannot be used in a pipeline. They are only executed if they are the sole command on the line (or in a semicolon-separated list). For example, `peek | grep .c` will not work as intended.
+*   **Strict Spacing for Operators:** The parser requires spaces around piping and redirection operators. For example, `ls>output.txt` will fail, whereas `ls > output.txt` will succeed.
+*   **No `stderr` Redirection:** Only `stdin` and `stdout` can be redirected. `stderr` redirection (e.g., `2>`) is not supported.
 *   **No Job Control:** Does not implement `Ctrl+Z` for suspending jobs or `fg`/`bg` commands for job management.
 *   **Argument Parsing:** Does not handle arguments with spaces (e.g., `"a file with spaces.txt"`).
-*   **No Shell Variables or Scripting:** Does not support variables, aliases, or script execution.
 
 ---
 
 ## Future Scope
 
-*   Implement piping (`|`) and I/O redirection (`<`, `>`).
-*   Add full job control with `fg`, `bg`, and `jobs` commands.
+*   Support for Built-in Commands in Pipelines.
+*   Support for `stderr` Redirection (e.g., `2>`).
 *   Introduce tab completion for commands and file paths.
-*   Enhance the parser to handle quoted arguments.
+*   Enhance the parser to handle quoted arguments and remove strict spacing requirements.
 
 ---

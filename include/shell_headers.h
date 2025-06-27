@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <ctype.h> // For isspace
+#include <fcntl.h> // For O_RDONLY, O_WRONLY, O_CREAT, O_APPEND
 
 // Project headers (found via -Iinclude in Makefile)
 #include "prompt.h"
@@ -42,6 +43,16 @@
 #define MAX_BG_PROCS 100
 #define HISTORY_SIZE 15      // Max items in history queue
 #define HISTORY_FILENAME ".shellby_history.txt" // History file name
+
+/**
+ * @brief Represents a single command with its arguments and I/O redirection info.
+ */
+typedef struct {
+    char* args[MAX_ARGS];
+    char* input_file;
+    char* output_file;
+    bool append_mode; // True if output redirection is '>>'
+} SimpleCommand;
 
 /**
  * @brief Prints a formatted error message to stderr.

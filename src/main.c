@@ -107,6 +107,188 @@ int get_line_with_history(char* buffer, int size, Que history, const char* home_
 }
 
 /**
+ * @brief Parses a single command segment, handling I/O redirection and syntax errors.
+ * @param command_str The string for a single command.
+ * @param cmd Pointer to a SimpleCommand struct to populate.
+ * @return true on successful parse, false on syntax error.
+ */
+bool parse_simple_command(char* command_str, SimpleCommand* cmd) {
+    // Initialize the struct
+    cmd->input_file = NULL;
+    cmd->output_file = NULL;
+    cmd->append_mode = false;
+    for (int i = 0; i < MAX_ARGS; i++) {
+        cmd->args[i] = NULL;
+    }
+
+    char* token;
+    int argc = 0;
+    
+    // strtok_r requires a save pointer
+    char* saveptr; 
+
+    char temp_str[MAX_COMMAND_LEN];
+    strncpy(temp_str, command_str, sizeof(temp_str) - 1);
+    temp_str[sizeof(temp_str) - 1] = '\0';
+
+    token = strtok_r(temp_str, " \t\n\r", &saveptr); // Use strtok_r
+    while (token != NULL) {
+        if (strcmp(token, "<") == 0) {
+            if (cmd->input_file) {
+                print_shell_error("Syntax error: Ambiguous input redirect.");
+                return false;
+            }
+            token = strtok_r(NULL, " \t\n\r", &saveptr); // Use strtok_r
+            if (!token || strcmp(token, ">") == 0 || strcmp(token, ">>") == 0 || strcmp(token, "<") == 0) {
+                print_shell_error("Syntax error: Missing name for input redirect.");
+                return false;
+            }
+            cmd->input_file = strdup(token);
+        } else if (strcmp(token, ">") == 0) {
+            if (cmd->output_file) {
+                print_shell_error("Syntax error: Ambiguous output redirect.");
+                return false;
+            }
+            token = strtok_r(NULL, " \t\n\r", &saveptr); // Use strtok_r
+            if (!token || strcmp(token, ">") == 0 || strcmp(token, ">>") == 0 || strcmp(token, "<") == 0) {
+                print_shell_error("Syntax error: Missing name for output redirect.");
+                return false;
+            }
+            cmd->output_file = strdup(token);
+            cmd->append_mode = false;
+        } else if (strcmp(token, ">>") == 0) {
+            if (cmd->output_file) {
+                print_shell_error("Syntax error: Ambiguous output redirect.");
+                return false;
+            }
+            token = strtok_r(NULL, " \t\n\r", &saveptr); // Use strtok_r
+            if (!token || strcmp(token, ">") == 0 || strcmp(token, ">>") == 0 || strcmp(token, "<") == 0) {
+                print_shell_error("Syntax error: Missing name for output redirect.");
+                return false;
+            }
+            cmd->output_file = strdup(token);
+            cmd->append_mode = true;
+        } else {
+            if (argc < MAX_ARGS - 1) {
+                cmd->args[argc++] = strdup(token);
+            }
+        }
+        token = strtok_r(NULL, " \t\n\r", &saveptr); // Use strtok_r
+    }
+    cmd->args[argc] = NULL;
+    return true; // Success
+}
+
+/**
+ * @brief Executes a pipeline of one or more commands.
+ * @param commands Array of SimpleCommand structs.
+ * @param num_commands The number of commands in the pipeline.
+ * @param is_background Whether the entire pipeline should run in the background.
+ * @param home_dir The shell's home directory.
+ * @param prev_dir The shell's previous directory.
+ * @param background_pids Array for tracking background process PIDs.
+ * @param bg_process_names Array for tracking background process names.
+ * @param num_bg_processes Pointer to the number of background processes.
+ */
+void execute_pipeline(SimpleCommand commands[], int num_commands, bool is_background, int background_pids[], char bg_process_names[][MAX_PATH_LEN], int* num_bg_processes) {
+    int input_fd = STDIN_FILENO;
+    int pipe_fds[2];
+    pid_t pids[num_commands];
+
+    for (int i = 0; i < num_commands; i++) {
+        // Create a pipe for all but the last command
+        if (i < num_commands - 1) {
+            if (pipe(pipe_fds) < 0) {
+                print_shell_perror("pipe failed");
+                return;
+            }
+        }
+
+        pids[i] = fork();
+        if (pids[i] < 0) {
+            print_shell_perror("fork failed");
+            return;
+        }
+
+        if (pids[i] == 0) { // --- Child Process ---
+            // Handle input redirection
+            if (i > 0) { // Not the first command
+                dup2(input_fd, STDIN_FILENO);
+                close(input_fd);
+            }
+            if (commands[i].input_file) {
+                int in_fd = open(commands[i].input_file, O_RDONLY);
+                if (in_fd < 0) {
+                    print_shell_perror(commands[i].input_file);
+                    exit(EXIT_FAILURE);
+                }
+                dup2(in_fd, STDIN_FILENO);
+                close(in_fd);
+            }
+
+            // Handle output redirection
+            if (i < num_commands - 1) { // Not the last command
+                dup2(pipe_fds[1], STDOUT_FILENO);
+                close(pipe_fds[0]);
+                close(pipe_fds[1]);
+            }
+            if (commands[i].output_file) {
+                int flags = O_WRONLY | O_CREAT;
+                flags |= commands[i].append_mode ? O_APPEND : O_TRUNC;
+                int out_fd = open(commands[i].output_file, flags, 0644);
+                if (out_fd < 0) {
+                    print_shell_perror(commands[i].output_file);
+                    exit(EXIT_FAILURE);
+                }
+                dup2(out_fd, STDOUT_FILENO);
+                close(out_fd);
+            }
+
+            // Check for built-in commands (only if it's a single command in the pipeline)
+            // This is a simplification; handling built-ins in pipes is more complex.
+            if (num_commands == 1 && strcmp(commands[i].args[0], "warp") == 0) {
+                // 'warp' must run in the parent. We exit here, parent will handle it.
+                exit(EXIT_SUCCESS); 
+            }
+            // Add other built-ins here if they need special handling.
+            
+            if (execvp(commands[i].args[0], commands[i].args) == -1) {
+                fprintf(stderr, _RED_ "Shell Error: Command '%s' not found or execvp error" _RESET_ ": %s\n", commands[i].args[0], strerror(errno));
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        // --- Parent Process ---
+        if (input_fd != STDIN_FILENO) {
+            close(input_fd);
+        }
+        if (i < num_commands - 1) {
+            close(pipe_fds[1]);
+            input_fd = pipe_fds[0];
+        }
+    }
+
+    // --- Parent waits for all children in the pipeline ---
+    if (!is_background) {
+        for (int i = 0; i < num_commands; i++) {
+            int status;
+            waitpid(pids[i], &status, 0);
+        }
+    } else {
+        if (*num_bg_processes < MAX_BG_PROCS) {
+            background_pids[*num_bg_processes] = pids[num_commands - 1]; // Track the last process in the pipe
+            strncpy(bg_process_names[*num_bg_processes], commands[num_commands-1].args[0], MAX_PATH_LEN - 1);
+            bg_process_names[*num_bg_processes][MAX_PATH_LEN - 1] = '\0';
+            (*num_bg_processes)++;
+            printf("Shell: Started background pipeline [%d] (last PID %d)\n", *num_bg_processes, pids[num_commands-1]);
+        } else {
+            print_shell_error("Maximum background processes reached.");
+            for (int i = 0; i < num_commands; i++) waitpid(pids[i], NULL, 0);
+        }
+    }
+}
+
+/**
  * @brief Prints a formatted error message to stderr.
  * @param message The error message string.
  */
@@ -249,13 +431,11 @@ int main() {
 
         strncpy(original_input_for_history, input_line, sizeof(original_input_for_history) - 1);
         original_input_for_history[sizeof(original_input_for_history) - 1] = '\0';
-        // REMOVED: Newline stripping for original_input_for_history is no longer needed.
 
         char mutable_input_line[MAX_INPUT_LEN];
         strncpy(mutable_input_line, input_line, sizeof(mutable_input_line) -1);
         mutable_input_line[sizeof(mutable_input_line)-1] = '\0';
         
-        // REMOVED: Newline stripping for mutable_input_line is no longer needed.
         if (strlen(mutable_input_line) == 0) continue;
 
 
@@ -280,195 +460,209 @@ int main() {
             strncpy(command_to_process_storage, semi_colon_commands[i], sizeof(command_to_process_storage)-1);
             command_to_process_storage[sizeof(command_to_process_storage)-1] = '\0';
 
-            char* trimmed_cmd = command_to_process_storage;
-            while (isspace((unsigned char)*trimmed_cmd)) trimmed_cmd++;
-            char* end = trimmed_cmd + strlen(trimmed_cmd) - 1;
-            while (end > trimmed_cmd && isspace((unsigned char)*end)) end--;
+            char* trimmed_cmd_ptr = command_to_process_storage;
+            while (isspace((unsigned char)*trimmed_cmd_ptr)) trimmed_cmd_ptr++;
+            char* end = trimmed_cmd_ptr + strlen(trimmed_cmd_ptr) - 1;
+            while (end > trimmed_cmd_ptr && isspace((unsigned char)*end)) end--;
             *(end + 1) = '\0';
 
-            if (strlen(trimmed_cmd) == 0) continue;
+            if (strlen(trimmed_cmd_ptr) == 0) continue;
 
-            // For prompt display: get first word of the potentially substituted command
-            char temp_for_prompt_name[MAX_COMMAND_LEN];
-            strncpy(temp_for_prompt_name, trimmed_cmd, sizeof(temp_for_prompt_name)-1);
-            temp_for_prompt_name[sizeof(temp_for_prompt_name)-1] = '\0';
-            char *first_word = strtok(temp_for_prompt_name, " \t\n\r");
-            if (first_word) {
-                strncpy(command_name_for_prompt, first_word, MAX_COMMAND_LEN -1);
-                command_name_for_prompt[MAX_COMMAND_LEN-1] = '\0';
-            } else {
-                command_name_for_prompt[0] = '\0';
+            // --- FIXED: 'pastevents execute' logic ---
+            if (strncmp(trimmed_cmd_ptr, "pastevents execute", 18) == 0) {
+                char temp_pastevents_cmd[MAX_COMMAND_LEN];
+                strncpy(temp_pastevents_cmd, trimmed_cmd_ptr, sizeof(temp_pastevents_cmd)-1);
+                char* pe_saveptr;
+                strtok_r(temp_pastevents_cmd, " \t\n\r", &pe_saveptr); // "pastevents"
+                strtok_r(NULL, " \t\n\r", &pe_saveptr); // "execute"
+                char* pe_token = strtok_r(NULL, " \t\n\r", &pe_saveptr); // The number k
+                if (!pe_token) { print_shell_error("pastevents execute: Number not given"); continue; }
+                int k = atoi(pe_token);
+                if (k <= 0) { print_shell_error("pastevents execute: Invalid number for k"); continue; }
+                char* command_from_history = get_kth_history_element(history_queue, k);
+                if (command_from_history) {
+                    // BUG FIX: Copy to the start of the buffer, not to the trimmed pointer
+                    strncpy(command_to_process_storage, command_from_history, MAX_COMMAND_LEN-1);
+                    // We must now re-trim the new command in the buffer
+                    trimmed_cmd_ptr = command_to_process_storage;
+                    while (isspace((unsigned char)*trimmed_cmd_ptr)) trimmed_cmd_ptr++;
+                    end = trimmed_cmd_ptr + strlen(trimmed_cmd_ptr) - 1;
+                    while (end > trimmed_cmd_ptr && isspace((unsigned char)*end)) end--;
+                    *(end + 1) = '\0';
+
+                    add_history_element(history_queue, command_from_history);
+                    write_history_to_file(history_queue, home_dir);
+                    add_original_to_history = false;
+                    free(command_from_history);
+                } else { continue; }
             }
-
 
             long start_time = time(NULL);
-            bool is_background_job = false;
-            char* args[MAX_ARGS];
             
-            // Handle pastevents execute specifically, as it modifies the command to be run
-            if (strncmp(trimmed_cmd, "pastevents", 10) == 0) {
-                char temp_pastevents_cmd[MAX_COMMAND_LEN];
-                strncpy(temp_pastevents_cmd, trimmed_cmd, sizeof(temp_pastevents_cmd)-1);
-                temp_pastevents_cmd[sizeof(temp_pastevents_cmd)-1] = '\0';
-
-                char* pe_saveptr;
-                char* pe_token = strtok_r(temp_pastevents_cmd, " \t\n\r", &pe_saveptr); // "pastevents"
-                if (pe_token) {
-                    pe_token = strtok_r(NULL, " \t\n\r", &pe_saveptr); // "execute" or "purge" or NULL
-                    if (pe_token && strcmp(pe_token, "execute") == 0) {
-                        pe_token = strtok_r(NULL, " \t\n\r", &pe_saveptr); // The number k
-                        if (!pe_token) {
-                            print_shell_error("pastevents execute: Number not given");
-                            time_taken_for_prompt = time(NULL) - start_time;
-                            continue;
-                        }
-                        int k = atoi(pe_token);
-                        if (k <= 0) {
-                            print_shell_error("pastevents execute: Invalid number for k");
-                            time_taken_for_prompt = time(NULL) - start_time;
-                            continue;
-                        }
-                        char* command_from_history = get_kth_history_element(history_queue, k);
-                        if (command_from_history) {
-                            strncpy(trimmed_cmd, command_from_history, MAX_COMMAND_LEN-1); // command_to_process_storage gets new content
-                            trimmed_cmd[MAX_COMMAND_LEN-1] = '\0';
-                            add_history_element(history_queue, command_from_history); // Add executed command to history
-                            write_history_to_file(history_queue, home_dir);
-                            add_original_to_history = false; // Don't add "pastevents execute ..." itself
-                            free(command_from_history);
-                            // Update command_name_for_prompt with the new command's first word
-                            strncpy(temp_for_prompt_name, trimmed_cmd, sizeof(temp_for_prompt_name)-1);
-                            temp_for_prompt_name[sizeof(temp_for_prompt_name)-1] = '\0';
-                            first_word = strtok(temp_for_prompt_name, " \t\n\r");
-                            if (first_word) strncpy(command_name_for_prompt, first_word, MAX_COMMAND_LEN -1);
-                        } else {
-                            // Error already printed by get_kth_history_element if k was invalid
-                            time_taken_for_prompt = time(NULL) - start_time;
-                            continue;
-                        }
-                    }
-                }
+            bool is_background_job = false;
+            char* ampersand = strrchr(trimmed_cmd_ptr, '&');
+            if (ampersand != NULL && (*(ampersand - 1) == ' ' || *(ampersand - 1) == '\t') && *(ampersand + 1) == '\0') {
+                is_background_job = true;
+                *ampersand = '\0';
             }
 
+            SimpleCommand commands[MAX_ARGS];
+            int num_commands = 0;
+            bool parsing_ok = true;
+            
+            // --- FIXED: Use strtok_r for the outer pipe parsing loop ---
+            char* pipe_saveptr;
+            char* pipe_segment = strtok_r(trimmed_cmd_ptr, "|", &pipe_saveptr);
 
-            int argc = parse_arguments(trimmed_cmd, args, MAX_ARGS, &is_background_job);
-            if (argc == 0) {
-                time_taken_for_prompt = time(NULL) - start_time;
+            while(pipe_segment != NULL && num_commands < MAX_ARGS) {
+                while (isspace((unsigned char)*pipe_segment)) pipe_segment++;
+                char* pipe_end = pipe_segment + strlen(pipe_segment) - 1;
+                while (pipe_end > pipe_segment && isspace((unsigned char)*pipe_end)) pipe_end--;
+                *(pipe_end + 1) = '\0';
+
+                if (strlen(pipe_segment) == 0) {
+                    print_shell_error("Syntax error: Unexpected null command in pipeline.");
+                    parsing_ok = false;
+                    break;
+                }
+
+                if (!parse_simple_command(pipe_segment, &commands[num_commands])) {
+                    parsing_ok = false;
+                    break;
+                }
+                num_commands++;
+                
+                // Continue with the same save pointer for pipes
+                pipe_segment = strtok_r(NULL, "|", &pipe_saveptr);
+            }
+
+            if (!parsing_ok) {
+                for(int j=0; j<num_commands; ++j) {
+                    for(int k=0; commands[j].args[k] != NULL; ++k) free(commands[j].args[k]);
+                    free(commands[j].input_file);
+                    free(commands[j].output_file);
+                }
                 continue;
             }
 
-            // Built-in commands
-            if (strcmp(args[0], "q") == 0 || strcmp(args[0], "quit") == 0 || strcmp(args[0], "exit") == 0) {
-                printf("Goodbye!\n");
-                free(semi_colon_commands);
-                write_history_to_file(history_queue, home_dir);
-                destroyQue(history_queue);
-                return EXIT_SUCCESS;
-            } else if (strcmp(args[0], "clear") == 0) {
-                system("clear");
-            } else if (strcmp(args[0], "warp") == 0) {
-                if (argc < 2) {
-                    char* result = warp("~", home_dir, prev_dir); // Warp to home
-                    if (result && strlen(result) > 0) {
-                        strncpy(prev_dir, result, sizeof(prev_dir) - 1);
-                        prev_dir[sizeof(prev_dir) - 1] = '\0';
+            if (num_commands == 0 || commands[0].args[0] == NULL) {
+                continue;
+            }
+
+            // For prompt display
+            strncpy(command_name_for_prompt, commands[0].args[0], MAX_COMMAND_LEN - 1);
+            command_name_for_prompt[MAX_COMMAND_LEN - 1] = '\0';
+
+            // --- BUILT-IN COMMAND HANDLING ---
+            // Built-ins are handled only if they are the ONLY command in the line (no pipes).
+            if (num_commands == 1) {
+                char* cmd_name = commands[0].args[0];
+                
+                // Calculate argc for the specific command
+                int argc = 0;
+                while(commands[0].args[argc] != NULL) argc++;
+
+                if (strcmp(cmd_name, "q") == 0 || strcmp(cmd_name, "quit") == 0 || strcmp(cmd_name, "exit") == 0) {
+                    printf("Goodbye!\n");
+                    for(int j=0; j<num_commands; ++j) {
+                        for(int k=0; commands[j].args[k] != NULL; ++k) free(commands[j].args[k]);
+                        free(commands[j].input_file);
+                        free(commands[j].output_file);
                     }
-                    free(result);
-                } else {
-                    for (int j = 1; j < argc; j++) {
-                        char* result = warp(args[j], home_dir, prev_dir);
+                    free(semi_colon_commands);
+                    write_history_to_file(history_queue, home_dir);
+                    destroyQue(history_queue);
+                    return EXIT_SUCCESS;
+
+                } else if (strcmp(cmd_name, "warp") == 0) {
+                    if (argc < 2) {
+                        char* result = warp("~", home_dir, prev_dir);
                         if (result && strlen(result) > 0) {
-                             strncpy(prev_dir, result, sizeof(prev_dir) - 1);
-                             prev_dir[sizeof(prev_dir) - 1] = '\0';
+                            strncpy(prev_dir, result, sizeof(prev_dir) - 1);
+                            prev_dir[sizeof(prev_dir) - 1] = '\0';
                         }
                         free(result);
-                    }
-                }
-            } else if (strcmp(args[0], "peek") == 0) {
-                // Simplified peek flag handling. A full getopt solution is better.
-                bool l_flag = false, a_flag = false;
-                char* target_peek_dir = NULL;
-                for(int k=1; k<argc; ++k) {
-                    if(args[k][0] == '-') {
-                        for(size_t char_idx = 1; char_idx < strlen(args[k]); ++char_idx) {
-                            if(args[k][char_idx] == 'l') l_flag = true;
-                            else if(args[k][char_idx] == 'a') a_flag = true;
-                            else print_shell_error("peek: Invalid flag option.");
-                        }
                     } else {
-                        if(target_peek_dir == NULL) target_peek_dir = args[k];
-                        else print_shell_error("peek: Multiple directories specified.");
+                        for (int j = 1; j < argc; j++) {
+                            char* result = warp(commands[0].args[j], home_dir, prev_dir);
+                            if (result && strlen(result) > 0) {
+                                strncpy(prev_dir, result, sizeof(prev_dir) - 1);
+                                prev_dir[sizeof(prev_dir) - 1] = '\0';
+                            }
+                            free(result);
+                        }
                     }
-                }
-                peek_execute(target_peek_dir, home_dir, l_flag, a_flag);
-
-            } else if (strcmp(args[0], "pastevents") == 0) {
-                // "execute" is handled above. This is for "pastevents" or "pastevents purge"
-                if (argc == 1) {
-                    display_history(history_queue);
-                } else if (argc == 2 && strcmp(args[1], "purge") == 0) {
-                    purge_history(history_queue);
-                    write_history_to_file(history_queue, home_dir); // Persist purge
-                } else {
-                    print_shell_error("pastevents: Invalid arguments. Usage: pastevents [purge]");
-                }
-            } else if (strcmp(args[0], "proclore") == 0) {
-                if (argc == 1) proclore_execute(getpid(), home_dir);
-                else if (argc == 2) proclore_execute(atoi(args[1]), home_dir);
-                else print_shell_error("proclore: Too many arguments. Usage: proclore [pid]");
-            } else if (strcmp(args[0], "seek") == 0) {
-                // Simplified seek flag handling.
-                bool d_flag = false, f_flag = false, e_flag = false;
-                char* target_name = NULL;
-                char* search_dir = "."; // Default to current directory
-                int arg_idx = 1;
-                while(arg_idx < argc && args[arg_idx][0] == '-') {
-                    for(size_t char_idx = 1; char_idx < strlen(args[arg_idx]); ++char_idx) {
-                        if(args[arg_idx][char_idx] == 'd') d_flag = true;
-                        else if(args[arg_idx][char_idx] == 'f') f_flag = true;
-                        else if(args[arg_idx][char_idx] == 'e') e_flag = true;
-                        else print_shell_error("seek: Invalid flag.");
-                    }
-                    arg_idx++;
-                }
-                if(arg_idx < argc) target_name = args[arg_idx++];
-                else { print_shell_error("seek: Target name not specified."); time_taken_for_prompt = time(NULL) - start_time; continue; }
-
-                if(arg_idx < argc) search_dir = args[arg_idx];
-                
-                if (d_flag && f_flag) { print_shell_error("seek: Flags -d and -f are mutually exclusive."); }
-                else seek_execute(target_name, search_dir, home_dir, prev_dir, d_flag, f_flag, e_flag);
-
-            } else { // External command
-                pid_t pid = fork();
-                if (pid == -1) {
-                    print_shell_perror("fork failed");
-                } else if (pid == 0) { // Child process
-                    setpgid(0, 0);
-                    if (execvp(args[0], args) == -1) {
-                        fprintf(stderr, _RED_ "Shell Error: Command '%s' not found or execvp error" _RESET_ ": %s\n", args[0], strerror(errno));
-                        exit(EXIT_FAILURE);
-                    }
-                } else { // Parent process
-                    if (is_background_job) {
-                        if (num_bg_processes < MAX_BG_PROCS) {
-                            background_pids[num_bg_processes] = pid;
-                            strncpy(background_process_names[num_bg_processes], args[0], MAX_PATH_LEN - 1);
-                            background_process_names[num_bg_processes][MAX_PATH_LEN - 1] = '\0';
-                            num_bg_processes++;
-                            printf("Shell: Started background process [%d] %s (PID %d)\n", num_bg_processes, args[0], pid);
+                } else if (strcmp(cmd_name, "peek") == 0) {
+                    bool l_flag = false, a_flag = false;
+                    char* target_peek_dir = NULL;
+                    for(int k=1; k<argc; ++k) {
+                        if(commands[0].args[k][0] == '-') {
+                            for(size_t char_idx = 1; char_idx < strlen(commands[0].args[k]); ++char_idx) {
+                                if(commands[0].args[k][char_idx] == 'l') l_flag = true;
+                                else if(commands[0].args[k][char_idx] == 'a') a_flag = true;
+                                else print_shell_error("peek: Invalid flag option.");
+                            }
                         } else {
-                            print_shell_error("Maximum background processes reached. Cannot run in background.");
-                            int status; // Wait for it like a foreground job
-                            waitpid(pid, &status, 0);
+                            if(target_peek_dir == NULL) target_peek_dir = commands[0].args[k];
+                            else print_shell_error("peek: Multiple directories specified.");
                         }
-                    } else {
-                        int status;
-                        waitpid(pid, &status, 0);
                     }
+                    peek_execute(target_peek_dir, home_dir, l_flag, a_flag);
+
+                } else if (strcmp(cmd_name, "pastevents") == 0) {
+                    // 'execute' is handled before parsing. This only handles display and purge.
+                    if (argc == 1) {
+                        display_history(history_queue);
+                    } else if (argc == 2 && strcmp(commands[0].args[1], "purge") == 0) {
+                        purge_history(history_queue);
+                        write_history_to_file(history_queue, home_dir);
+                    } else {
+                        print_shell_error("pastevents: Invalid arguments. Usage: pastevents [purge]");
+                    }
+                } else if (strcmp(cmd_name, "proclore") == 0) {
+                    if (argc == 1) proclore_execute(getpid(), home_dir);
+                    else if (argc == 2) proclore_execute(atoi(commands[0].args[1]), home_dir);
+                    else print_shell_error("proclore: Too many arguments. Usage: proclore [pid]");
+
+                } else if (strcmp(cmd_name, "seek") == 0) {
+                    bool d_flag = false, f_flag = false, e_flag = false;
+                    char* target_name = NULL;
+                    char* search_dir = ".";
+                    int arg_idx = 1;
+                    while(arg_idx < argc && commands[0].args[arg_idx][0] == '-') {
+                        for(size_t char_idx = 1; char_idx < strlen(commands[0].args[arg_idx]); ++char_idx) {
+                            if(commands[0].args[arg_idx][char_idx] == 'd') d_flag = true;
+                            else if(commands[0].args[arg_idx][char_idx] == 'f') f_flag = true;
+                            else if(commands[0].args[arg_idx][char_idx] == 'e') e_flag = true;
+                            else print_shell_error("seek: Invalid flag.");
+                        }
+                        arg_idx++;
+                    }
+                    if(arg_idx < argc) target_name = commands[0].args[arg_idx++];
+                    else { print_shell_error("seek: Target name not specified."); time_taken_for_prompt = time(NULL) - start_time; continue; }
+
+                    if(arg_idx < argc) search_dir = commands[0].args[arg_idx];
+                    
+                    if (d_flag && f_flag) { print_shell_error("seek: Flags -d and -f are mutually exclusive."); }
+                    else seek_execute(target_name, search_dir, home_dir, prev_dir, d_flag, f_flag, e_flag);
+
+                } else {
+                    // Not a built-in, so execute as an external command/pipeline
+                    execute_pipeline(commands, num_commands, is_background_job, background_pids, background_process_names, &num_bg_processes);
                 }
+            } else {
+                // This is a pipeline with more than one command
+                execute_pipeline(commands, num_commands, is_background_job, background_pids, background_process_names, &num_bg_processes);
             }
+            
             time_taken_for_prompt = time(NULL) - start_time;
+
+            // Cleanup dynamically allocated strings from parsing
+            for(int j=0; j<num_commands; ++j) {
+                for(int k=0; commands[j].args[k] != NULL; ++k) free(commands[j].args[k]);
+                free(commands[j].input_file);
+                free(commands[j].output_file);
+            }
         }
 
         if (add_original_to_history && strlen(original_input_for_history) > 0) {
