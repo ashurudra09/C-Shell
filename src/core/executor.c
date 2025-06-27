@@ -5,6 +5,7 @@
 #include "commands/peek.h"
 #include "commands/proclore.h"
 #include "commands/seek.h"
+#include "commands/iman.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,7 +110,7 @@ void process_input_line(char* input_line, ShellState* state) {
 
 static bool is_builtin_command(const char* cmd_name) {
     if (!cmd_name) return false;
-    const char* builtins[] = {"q", "quit", "exit", "warp", "peek", "pastevents", "proclore", "seek", NULL};
+    const char* builtins[] = {"q", "quit", "exit", "warp", "peek", "pastevents", "proclore", "seek", "iman", NULL};
     for (int i = 0; builtins[i] != NULL; i++) {
         if (strcmp(cmd_name, builtins[i]) == 0) {
             return true;
@@ -161,6 +162,12 @@ static void execute_builtin_command(SimpleCommand* cmd, ShellState* state) {
         if(!name) { print_shell_error("seek: Target name not specified."); return; }
         if(d && f) { print_shell_error("seek: Flags -d and -f are mutually exclusive."); return; }
         seek_execute(name, dir, state->home_dir, state->prev_dir, d, f, e);
+    }  else if (strcmp(cmd_name, "iman") == 0) {
+        if (argc != 2) {
+            print_shell_error("Usage: iman <command_name>");
+        } else {
+            iman_execute(cmd->args[1]);
+        }
     }
 }
 

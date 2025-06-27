@@ -13,14 +13,15 @@ Shellby is a lightweight, custom shell implementation written in C. It emulates 
   - [Testing](#testing)
     - [How to Run the Tests](#how-to-run-the-tests)
   - [Features](#features)
-    - [1) Core Shell Functionality:](#1-core-shell-functionality)
-    - [2) Piping and I/O Redirection:](#2-piping-and-io-redirection)
-    - [3) `warp`:](#3-warp)
-    - [4) `peek`:](#4-peek)
-    - [5) `pastevents`:](#5-pastevents)
-    - [6) `proclore`:](#6-proclore)
-    - [7) `seek`:](#7-seek)
-    - [8) Background Processes:](#8-background-processes)
+    - [1) Core Shell Functionality](#1-core-shell-functionality)
+    - [2) Piping and I/O Redirection](#2-piping-and-io-redirection)
+    - [3) `warp`](#3-warp)
+    - [4) `peek`](#4-peek)
+    - [5) `pastevents`](#5-pastevents)
+    - [6) `proclore`](#6-proclore)
+    - [7) `seek`](#7-seek)
+    - [8) `iman`](#8-iman)
+    - [9) Background Processes](#9-background-processes)
   - [Key Design Features](#key-design-features)
   - [Limitations](#limitations)
   - [Future Scope](#future-scope)
@@ -112,7 +113,7 @@ It creates a temporary `shellby_test_environment/` directory for its operations 
 
 ## Features
 
-### 1) Core Shell Functionality:
+### 1) Core Shell Functionality
 *   **Interactive Prompt:** Displays user, system, and the current path relative to the shell's home (`~`). Shows the execution time of commands that take longer than 1 second.
 *   **Command Chaining:** Supports multiple commands on a single line, separated by semicolons (`;`).
     ```bash
@@ -120,7 +121,7 @@ It creates a temporary `shellby_test_environment/` directory for its operations 
     ```
 *   **External Command Execution:** Executes any command found in the system's `PATH` (e.g., `ls`, `grep`, `gcc`).
 
-### 2) Piping and I/O Redirection:
+### 2) Piping and I/O Redirection
 Shellby supports connecting commands with pipes and redirecting their standard input and output.
 
 *   **Piping (`|`):** The standard output of the command on the left is connected to the standard input of the command on the right.
@@ -143,7 +144,7 @@ Shellby supports connecting commands with pipes and redirecting their standard i
     <user@system:~> cat < input.txt | grep "error" > error_log.txt
     ```
 
-### 3) `warp`:
+### 3) `warp`
 Changes the current working directory, similar to `cd`.
 *   **Syntax:** `warp [<path1>] [<path2>] ...`
 *   **Functionality:**
@@ -152,7 +153,7 @@ Changes the current working directory, similar to `cd`.
     *   `warp ..`: Navigates to the parent directory.
     *   Supports multiple arguments, changing into each directory sequentially.
 
-### 4) `peek`:
+### 4) `peek`
 Lists files and directories, similar to `ls`. Output is sorted lexicographically.
 *   **Syntax:** `peek [<flags>] [<path>]`
 *   **Functionality:** Lists contents of the current directory by default. Hidden files (starting with `.`) are omitted unless the `-a` flag is used.
@@ -169,7 +170,7 @@ Lists files and directories, similar to `ls`. Output is sorted lexicographically
     *   **Green:** Executable files
     *   **Cyan:** Symbolic links
 
-### 5) `pastevents`:
+### 5) `pastevents`
 Manages and re-executes commands from a persistent history.
 *   **Functionality:** Stores the last 15 unique commands in `.shellby_history.txt`. History is loaded on startup and saved on exit.
 
@@ -181,7 +182,7 @@ Manages and re-executes commands from a persistent history.
 
 *   **Note:** using `up-arrow` and `down-arrow` shift between past commands using the same list.
 
-### 6) `proclore`:
+### 6) `proclore`
 Displays information about a process.
 *   **Syntax:** `proclore [<pid>]`
 *   **Functionality:** If `<pid>` is omitted, it displays information for the Shellby process itself.
@@ -192,7 +193,7 @@ Displays information about a process.
     *   **Virtual Memory:** The virtual memory size consumed.
     *   **Executable Path:** The absolute path to the executable, shortened with `~` if inside the shell's home.
 
-### 7) `seek`:
+### 7) `seek`
 Recursively searches for files or directories.
 *   **Syntax:** `seek [<flags>] <target_name> [<directory>]`
 *   **Functionality:** Performs an exact name match for `<target_name>`. Searches the current directory by default.
@@ -207,7 +208,13 @@ Recursively searches for files or directories.
     *   **Blue:** Matched directories
     *   **Green:** Matched files
 
-### 8) Background Processes:
+### 8) `iman`
+Fetches and displays manual pages for commands, similar to `man`.
+*   **Syntax:** `iman <command_name>`
+*   **Functionality:** Makes an HTTP GET request to an online manual page repository (`man.he.net`), parses the HTML response, and prints the plain-text content of the man page to the terminal. This command requires an active internet connection to function.
+
+
+### 9) Background Processes
 Run any external command in the background by appending `&`.
 *   **Functionality:** The shell immediately returns to the prompt after launching the process. A notification is printed when the process starts and when it terminates.
     ```bash
@@ -231,7 +238,8 @@ Run any external command in the background by appending `&`.
 
 ## Limitations
 
-*   **Built-in Commands in Pipelines:** Built-in commands (`warp`, `peek`, `seek`, `proclore`, `pastevents`) cannot be used in a pipeline. They are only executed if they are the sole command on the line (or in a semicolon-separated list). For example, `peek | grep .c` will not work as intended.
+*   **Built-in Commands in Pipelines:** Built-in commands (`warp`, `peek`, `seek`, `proclore`, `pastevents`, `iman`) cannot be used in a pipeline. They are only executed if they are the sole command on the line (or in a semicolon-separated list).
+*   **`iman` Command:** Requires an active internet connection to fetch manual pages, unlike the system `man` command which uses local files.
 *   **Strict Spacing for Operators:** The parser requires spaces around piping and redirection operators. For example, `ls>output.txt` will fail, whereas `ls > output.txt` will succeed.
 *   **No `stderr` Redirection:** Only `stdin` and `stdout` can be redirected. `stderr` redirection (e.g., `2>`) is not supported.
 *   **No Job Control:** Does not implement `Ctrl+Z` for suspending jobs or `fg`/`bg` commands for job management.
@@ -245,5 +253,5 @@ Run any external command in the background by appending `&`.
 *   Support for `stderr` Redirection (e.g., `2>`).
 *   Introduce tab completion for commands and file paths.
 *   Enhance the parser to handle quoted arguments and remove strict spacing requirements.
-
+ 
 ---
