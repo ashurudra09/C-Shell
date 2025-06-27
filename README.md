@@ -21,7 +21,9 @@ Shellby is a lightweight, custom shell implementation written in C. It emulates 
     - [6) `proclore`](#6-proclore)
     - [7) `seek`](#7-seek)
     - [8) `iman`](#8-iman)
-    - [9) Background Processes](#9-background-processes)
+    - [9) `activities`](#9-activities)
+    - [10) `ping`](#10-ping)
+    - [11) Background Processes](#11-background-processes)
   - [Key Design Features](#key-design-features)
   - [Limitations](#limitations)
   - [Future Scope](#future-scope)
@@ -213,8 +215,23 @@ Fetches and displays manual pages for commands, similar to `man`.
 *   **Syntax:** `iman <command_name>`
 *   **Functionality:** Makes an HTTP GET request to an online manual page repository (`man.he.net`), parses the HTML response, and prints the plain-text content of the man page to the terminal. This command requires an active internet connection to function.
 
+### 9) `activities`
+Displays a list of all processes that have been spawned by the shell and are currently running or stopped.
+*   **Syntax:** `activities`
+*   **Functionality:** Scans the system's process table and identifies all child processes belonging to the current shell session. The output is sorted by Process ID (PID).
+*   **Output Format:** `[pid]: [command name] - [state]`
+    *   **State:** Can be `Running` (for running or sleeping processes) or `Stopped` (for suspended or zombie processes).
 
-### 9) Background Processes
+### 10) `ping`
+Sends a specified signal to a process.
+*   **Syntax:** `ping <pid> <signal_number>`
+*   **Functionality:** A wrapper around the `kill` system call. It sends the signal identified by `<signal_number>` to the process with the ID `<pid>`.
+*   **Example:** To terminate a process with PID 12345, you can send signal 9 (SIGKILL).
+    ```bash
+    <user@system:~> ping 12345 9
+    ```
+
+### 11) Background Processes
 Run any external command in the background by appending `&`.
 *   **Functionality:** The shell immediately returns to the prompt after launching the process. A notification is printed when the process starts and when it terminates.
     ```bash
