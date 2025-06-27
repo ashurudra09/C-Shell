@@ -4,6 +4,29 @@ Shellby is a lightweight, custom shell implementation written in C. It emulates 
 
 ---
 
+## Table of Contents
+- [Shellby - A Custom Shell in C](#shellby---a-custom-shell-in-c)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Getting Started](#getting-started)
+  - [Project Structure](#project-structure)
+  - [Testing](#testing)
+    - [How to Run the Tests](#how-to-run-the-tests)
+  - [Features](#features)
+    - [1) Core Shell Functionality:](#1-core-shell-functionality)
+    - [2) Piping and I/O Redirection:](#2-piping-and-io-redirection)
+    - [3) `warp`:](#3-warp)
+    - [4) `peek`:](#4-peek)
+    - [5) `pastevents`:](#5-pastevents)
+    - [6) `proclore`:](#6-proclore)
+    - [7) `seek`:](#7-seek)
+    - [8) Background Processes:](#8-background-processes)
+  - [Key Design Features](#key-design-features)
+  - [Limitations](#limitations)
+  - [Future Scope](#future-scope)
+
+---
+
 ## Prerequisites
 
 *   A C compiler like `gcc` (GNU Compiler Collection)
@@ -203,7 +226,6 @@ Run any external command in the background by appending `&`.
 *   **Centralized State Management:** A `ShellState` struct holds all global shell information (e.g., current directories, history, background processes), preventing the need to pass many arguments between functions.
 *   **Persistent History:** Command history is saved to a file and reloaded across sessions.
 *   **Resource Management:** All dynamically allocated memory is intended to be freed on exit to prevent memory leaks.
-*   **Background Process Notifications:** The shell provides clear, asynchronous notifications about the state of background jobs.
 
 ---
 
