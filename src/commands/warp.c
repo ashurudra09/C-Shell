@@ -1,4 +1,12 @@
-#include "shell_headers.h"
+#include "commands/warp.h"
+#include "core/shell_state.h" // For constants and colors
+#include "utils/error.h"      // For print_shell_error and print_shell_perror
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 
 /**
  * @brief Changes the current working directory.

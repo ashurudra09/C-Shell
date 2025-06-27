@@ -1,4 +1,17 @@
-#include "shell_headers.h"
+#include "commands/peek.h"
+#include "core/shell_state.h" // For constants and colors
+#include "utils/error.h"      // For print_shell_perror
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <pwd.h>
+#include <grp.h>
+#include <time.h>
+#include <errno.h>
 
 /**
  * @brief Helper function to prepare the target directory path for peek.

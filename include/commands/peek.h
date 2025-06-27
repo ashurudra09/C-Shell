@@ -2,6 +2,7 @@
 #define PEEK_H_
 
 #include <sys/stat.h> // For mode_t
+#include <stdbool.h>
 
 /**
  * @brief Prints file permissions in rwxrwxrwx format.

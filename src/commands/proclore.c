@@ -1,4 +1,13 @@
-#include "shell_headers.h"
+#include "commands/proclore.h"
+#include "core/shell_state.h"
+#include "utils/error.h" 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <errno.h>
 
 void proclore_execute(int pid, const char* home_dir) {
     char proc_status_path[MAX_PATH_LEN];

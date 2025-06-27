@@ -1,53 +1,67 @@
-# Makefile for the Custom Shell
-
+# Compiler and flags
 CC = gcc
 # CFLAGS for compilation: Wall (all warnings), Wextra (extra warnings), g (debug symbols), Iinclude (header directory)
 CFLAGS = -Wall -Wextra -g -Iinclude
-# LDFLAGS for linking (if any special libraries were needed, e.g., -lm for math)
+# LDFLAGS for linking (if any special libraries were needed)
 LDFLAGS =
 
 # Directories
 SRC_DIR = src
 OBJ_DIR = obj
-# Executable name
-TARGET = shellby
+BIN_DIR = .
 
-# Automatically find all .c files in SRC_DIR
-SRCS = $(wildcard $(SRC_DIR)/*.c)
-# Generate corresponding .o file paths in OBJ_DIR
+# Executable name
+TARGET = $(BIN_DIR)/shellby
+
+# --- Source File Discovery ---
+# Use the 'find' command to recursively locate all .c files in the source directory.
+# This is robust and automatically adapts to new files/subdirectories.
+SRCS = $(shell find $(SRC_DIR) -name '*.c')
+
+# --- Object File Mapping ---
+# Generate corresponding .o file paths in OBJ_DIR, preserving the subdirectory structure.
+# e.g., 'src/core/parser.c' becomes 'obj/core/parser.o'
 OBJS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
-# Default target: build the executable
+# --- Build Rules ---
+
+# Default target: build the executable. This is the first rule.
 all: $(TARGET)
 
-# Link the executable from object files
+# Rule to link the executable from all object files.
+# $@ is the target name ('shellby')
+# $^ are all the prerequisites (all .o files)
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
+	@echo "Linking..."
+	$(CC) $(LDFLAGS) -o $@ $^
 	@echo "Shell '$(TARGET)' built successfully."
 
-# Rule to compile .c source files into .o object files
+# Rule to compile a .c source file into a .o object file.
+# This pattern rule handles all object files in any subdirectory of obj/.
 # $< is the first prerequisite (the .c file)
 # $@ is the target name (the .o file)
-# | $(OBJ_DIR) makes $(OBJ_DIR) an order-only prerequisite, ensuring it's created before compilation
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	# Create the destination directory for the object file if it doesn't exist.
+	# $(@D) is an automatic variable for the directory part of the target name.
+	# e.g., for 'obj/core/parser.o', $(@D) is 'obj/core'
+	@mkdir -p $(@D)
+	@echo "Compiling $< -> $@"
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Create the object directory if it doesn't exist
-$(OBJ_DIR):
-	@mkdir -p $(OBJ_DIR)
-	@echo "Created directory $(OBJ_DIR)."
+# --- Housekeeping Rules ---
 
-# Clean up build artifacts
+# Clean up all build artifacts.
 clean:
 	@echo "Cleaning up..."
-	rm -f $(TARGET) $(OBJ_DIR)/*.o
 	rm -rf $(OBJ_DIR)
+	rm -f $(TARGET)
+	rm -f .shellby_history.txt
 	@echo "Cleanup complete."
 
-# Test target (assuming test.c is in the root directory)
-# Note: 'test.c' is not provided, so this is a placeholder.
+# Placeholder test target from your original Makefile.
+# Note: 'test.c' is not part of the provided project files.
 test:
 	$(CC) -fsanitize=address,undefined -g test.c -o test_run
 
-# Phony targets are not actual files
+# Phony targets are not actual files.
 .PHONY: all clean test

@@ -1,4 +1,17 @@
-#include "shell_headers.h"
+#include "commands/seek.h"
+#include "core/shell_state.h" // For constants like MAX_PATH_LEN and colors
+#include "utils/error.h"      // For print_shell_error
+#include "commands/warp.h"    // For the warp() function
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <errno.h>
+
+// The rest of the file (static bool resolve_seek_search_path, seek_execute, etc.) remains the same...
 
 // Forward declaration for recursive helper
 static int seek_recursive(const char* target_name, const char* current_dir_path,

@@ -17,8 +17,8 @@ These can be installed via your system's package manager (e.g., `sudo apt instal
 
 **1. Clone the repository:**
 ```bash
-git clone <your-repo-url>
-cd <repository-folder>
+git clone git@github.com:ashurudra09/Shellby.git
+cd Shellby
 ```
 
 **2. Compile the project:**
@@ -41,9 +41,32 @@ make clean
 
 ---
 
+## Project Structure
+
+The codebase is organized into a modular structure to separate concerns and improve maintainability.
+
+```
+.
+├── include/            # Public headers for all modules
+│   ├── commands/       # Headers for built-in command implementations
+│   ├── core/           # Headers for the shell's core logic
+│   └── utils/          # Headers for utility modules (history queue, etc.)
+│
+├── src/                # Source code implementations
+│   ├── commands/       # .c files for built-in commands (peek, warp, etc.)
+│   ├── core/           # .c files for core logic (parser, executor, etc.)
+│   ├── utils/          # .c files for utility modules
+│   └── main.c          # Main entry point and the primary shell loop
+│
+├── Makefile            # Build script for compiling the project
+└── shellby             # The final executable (after running make)
+```
+
+---
+
 ## Testing
 
-A comprehensive test script, `test_shellby.sh`, is included to verify all major functionalities of the shell.
+A test script, `test_shellby.sh`, is included to verify all major functionalities of the shell.
 
 ### How to Run the Tests
 
@@ -60,13 +83,13 @@ A comprehensive test script, `test_shellby.sh`, is included to verify all major 
     ./test_shellby.sh
     ```
 
-The script will guide you through a series of automated and interactive tests. It creates a temporary `shellby_test_environment/` directory for its operations and cleans it up upon completion. Follow the on-screen prompts to proceed through each test case and observe the output.
+It creates a temporary `shellby_test_environment/` directory for its operations and cleans it up upon completion. Follow the on-screen prompts to proceed through each test case and observe the output.
 
 ---
 
 ## Features
 
-### Core Shell Functionality
+### 1) Core Shell Functionality:
 *   **Interactive Prompt:** Displays user, system, and the current path relative to the shell's home (`~`). Shows the execution time of commands that take longer than 1 second.
 *   **Command Chaining:** Supports multiple commands on a single line, separated by semicolons (`;`).
     ```bash
@@ -74,7 +97,7 @@ The script will guide you through a series of automated and interactive tests. I
     ```
 *   **External Command Execution:** Executes any command found in the system's `PATH` (e.g., `ls`, `grep`, `gcc`).
 
-### Piping and I/O Redirection
+### 2) Piping and I/O Redirection:
 Shellby supports connecting commands with pipes and redirecting their standard input and output.
 
 *   **Piping (`|`):** The standard output of the command on the left is connected to the standard input of the command on the right.
@@ -97,7 +120,7 @@ Shellby supports connecting commands with pipes and redirecting their standard i
     <user@system:~> cat < input.txt | grep "error" > error_log.txt
     ```
 
-### `warp`
+### 3) `warp`:
 Changes the current working directory, similar to `cd`.
 *   **Syntax:** `warp [<path1>] [<path2>] ...`
 *   **Functionality:**
@@ -106,7 +129,7 @@ Changes the current working directory, similar to `cd`.
     *   `warp ..`: Navigates to the parent directory.
     *   Supports multiple arguments, changing into each directory sequentially.
 
-### `peek`
+### 4) `peek`:
 Lists files and directories, similar to `ls`. Output is sorted lexicographically.
 *   **Syntax:** `peek [<flags>] [<path>]`
 *   **Functionality:** Lists contents of the current directory by default. Hidden files (starting with `.`) are omitted unless the `-a` flag is used.
@@ -123,7 +146,7 @@ Lists files and directories, similar to `ls`. Output is sorted lexicographically
     *   **Green:** Executable files
     *   **Cyan:** Symbolic links
 
-### `pastevents`
+### 5) `pastevents`:
 Manages and re-executes commands from a persistent history.
 *   **Functionality:** Stores the last 15 unique commands in `.shellby_history.txt`. History is loaded on startup and saved on exit.
 
@@ -135,7 +158,7 @@ Manages and re-executes commands from a persistent history.
 
 *   **Note:** using `up-arrow` and `down-arrow` shift between past commands using the same list.
 
-### `proclore`
+### 6) `proclore`:
 Displays information about a process.
 *   **Syntax:** `proclore [<pid>]`
 *   **Functionality:** If `<pid>` is omitted, it displays information for the Shellby process itself.
@@ -146,7 +169,7 @@ Displays information about a process.
     *   **Virtual Memory:** The virtual memory size consumed.
     *   **Executable Path:** The absolute path to the executable, shortened with `~` if inside the shell's home.
 
-### `seek`
+### 7) `seek`:
 Recursively searches for files or directories.
 *   **Syntax:** `seek [<flags>] <target_name> [<directory>]`
 *   **Functionality:** Performs an exact name match for `<target_name>`. Searches the current directory by default.
@@ -161,7 +184,7 @@ Recursively searches for files or directories.
     *   **Blue:** Matched directories
     *   **Green:** Matched files
 
-### Background Processes
+### 8) Background Processes:
 Run any external command in the background by appending `&`.
 *   **Functionality:** The shell immediately returns to the prompt after launching the process. A notification is printed when the process starts and when it terminates.
     ```bash
@@ -176,9 +199,10 @@ Run any external command in the background by appending `&`.
 
 ## Key Design Features
 
-*   **Modular Architecture:** The codebase is organized into separate files for each core functionality (`warp`, `peek`, `seek`, etc.), promoting maintainability and readability.
+*   **Modular Architecture:** The codebase is organized into a clean, hierarchical structure. Core logic (parsing, execution), built-in command implementations, and utilities are separated into distinct modules, promoting readability and maintainability.
+*   **Centralized State Management:** A `ShellState` struct holds all global shell information (e.g., current directories, history, background processes), preventing the need to pass many arguments between functions.
 *   **Persistent History:** Command history is saved to a file and reloaded across sessions.
-*   **Resource Management:** All dynamically allocated memory is freed on exit to prevent memory leaks.
+*   **Resource Management:** All dynamically allocated memory is intended to be freed on exit to prevent memory leaks.
 *   **Background Process Notifications:** The shell provides clear, asynchronous notifications about the state of background jobs.
 
 ---

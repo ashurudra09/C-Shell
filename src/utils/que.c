@@ -1,4 +1,10 @@
-#include "shell_headers.h"
+#include "utils/que.h"
+#include "core/shell_state.h" // For constants like MAX_INPUT_LEN, HISTORY_SIZE, etc.
+#include "utils/error.h"      // For print_shell_perror
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 Que initQue() {
     Que Q = (Que)malloc(sizeof(struct que));
