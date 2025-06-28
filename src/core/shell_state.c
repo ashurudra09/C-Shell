@@ -21,7 +21,8 @@ bool shell_state_init(ShellState* state) {
     state->num_bg_processes = 0;
     state->last_command_name[0] = '\0';
     state->time_taken_for_prompt = -1;
-
+    state->foreground_pgid = -1;
+    
     // Initialize background process arrays to be safe
     for (int i = 0; i < MAX_BG_PROCS; i++) {
         state->background_pids[i] = -1;

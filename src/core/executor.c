@@ -8,6 +8,8 @@
 #include "commands/iman.h"
 #include "commands/activities.h"
 #include "commands/ping.h"
+#include "commands/neonate.h"
+#include "commands/fg_bg.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,7 +114,7 @@ void process_input_line(char* input_line, ShellState* state) {
 
 static bool is_builtin_command(const char* cmd_name) {
     if (!cmd_name) return false;
-    const char* builtins[] = {"q", "quit", "exit", "warp", "peek", "pastevents", "proclore", "seek", "iman", "activities", "ping", NULL};
+    const char* builtins[] = {"q", "quit", "exit", "warp", "peek", "pastevents", "proclore", "seek", "iman", "activities", "ping", "neonate", "fg", "bg", NULL};
     for (int i = 0; builtins[i] != NULL; i++) {
         if (strcmp(cmd_name, builtins[i]) == 0) {
             return true;
@@ -184,6 +186,31 @@ static void execute_builtin_command(SimpleCommand* cmd, ShellState* state) {
             int signal_num = atoi(cmd->args[2]);
             ping_execute(target_pid, signal_num);
         }
+    } else if (strcmp(cmd_name, "neonate") == 0) {
+        if (argc != 3 || strcmp(cmd->args[1], "-n") != 0) {
+            print_shell_error("Usage: neonate -n <time_in_seconds>");
+        } else {
+            int time_arg = atoi(cmd->args[2]);
+            if (time_arg <= 0) {
+                print_shell_error("neonate: time argument must be a positive integer.");
+            } else {
+                neonate_execute(time_arg);
+            }
+        }
+    } else if (strcmp(cmd_name, "bg") == 0) {
+        if (argc != 2) {
+            print_shell_error("Usage: bg <pid>");
+        } else {
+            pid_t target_pid = atoi(cmd->args[1]);
+            bg_execute(target_pid, state);
+        }
+    } else if (strcmp(cmd_name, "fg") == 0) {
+        if (argc != 2) {
+            print_shell_error("Usage: fg <pid>");
+        } else {
+            pid_t target_pid = atoi(cmd->args[1]);
+            fg_execute(target_pid, state);
+        }
     }
 }
 
@@ -191,6 +218,7 @@ static void execute_pipeline(SimpleCommand commands[], int num_commands, bool is
     int input_fd = STDIN_FILENO;
     int pipe_fds[2];
     pid_t pids[num_commands];
+    pid_t pgid = 0; // The process group ID for this pipeline
 
     for (int i = 0; i < num_commands; i++) {
         if (i < num_commands - 1) {
@@ -199,7 +227,20 @@ static void execute_pipeline(SimpleCommand commands[], int num_commands, bool is
         pids[i] = fork();
         if (pids[i] < 0) { print_shell_perror("fork failed"); return; }
 
-        if (pids[i] == 0) { // Child
+        if (pids[i] == 0) { // --- Child Process ---
+            // Set the process group ID. The first child sets it for the whole pipeline.
+            pgid = (i == 0) ? getpid() : pgid;
+            setpgid(0, pgid);
+
+            if (!is_background) {
+                // If it's a foreground job, it needs terminal control.
+                tcsetpgrp(STDIN_FILENO, pgid);
+            }
+            // A child process should not ignore signals. Reset to default handlers.
+            signal(SIGINT, SIG_DFL);
+            signal(SIGTSTP, SIG_DFL);
+
+            // --- I/O Redirection Logic (unchanged) ---
             if (i > 0) { dup2(input_fd, STDIN_FILENO); close(input_fd); }
             if (commands[i].input_file) {
                 int in_fd = open(commands[i].input_file, O_RDONLY);
@@ -216,29 +257,60 @@ static void execute_pipeline(SimpleCommand commands[], int num_commands, bool is
                 if (out_fd < 0) { print_shell_perror(commands[i].output_file); exit(EXIT_FAILURE); }
                 dup2(out_fd, STDOUT_FILENO); close(out_fd);
             }
+            // --- Execution (unchanged) ---
             if (execvp(commands[i].args[0], commands[i].args) == -1) {
                 fprintf(stderr, _RED_ "Shell Error: Command '%s' not found" _RESET_ "\n", commands[i].args[0]);
                 exit(EXIT_FAILURE);
             }
         }
-        // Parent
+        // --- Parent Process ---
+        // The first child's PID becomes the PGID for the whole group.
+        if (i == 0) {
+            pgid = pids[0];
+        }
+        setpgid(pids[i], pgid); // Set PGID for all children in the pipeline
+
         if (input_fd != STDIN_FILENO) close(input_fd);
         if (i < num_commands - 1) { close(pipe_fds[1]); input_fd = pipe_fds[0]; }
     }
 
+    // --- Parent Process Waits or Continues ---
     if (!is_background) {
-        for (int i = 0; i < num_commands; i++) waitpid(pids[i], NULL, 0);
+        // --- FOREGROUND JOB ---
+        state->foreground_pgid = pgid; // Set global state
+        tcsetpgrp(STDIN_FILENO, pgid); // Give terminal control to the child group
+
+        // Wait for all processes in the pipeline to finish or be stopped
+        for (int i = 0; i < num_commands; i++) {
+            int status;
+            // WUNTRACED is crucial for catching Ctrl+Z (SIGTSTP)
+            waitpid(pids[i], &status, WUNTRACED);
+
+            if (WIFSTOPPED(status)) {
+                // Process was stopped by Ctrl+Z
+                printf("\nStopped: %s (PID %d)\n", commands[i].args[0], pids[i]);
+                // Add the entire pipeline to background jobs
+                if (state->num_bg_processes < MAX_BG_PROCS) {
+                    state->background_pids[state->num_bg_processes] = pgid; // Track by PGID
+                    strncpy(state->background_process_names[state->num_bg_processes], commands[0].args[0], MAX_PATH_LEN - 1);
+                    state->num_bg_processes++;
+                }
+                break; // Stop waiting for other processes in the pipeline
+            }
+        }
+
+        tcsetpgrp(STDIN_FILENO, getpgrp()); // Take back terminal control
+        state->foreground_pgid = -1; // Reset global state
     } else {
+        // --- BACKGROUND JOB ---
         if (state->num_bg_processes < MAX_BG_PROCS) {
-            pid_t last_pid = pids[num_commands - 1];
-            state->background_pids[state->num_bg_processes] = last_pid;
+            state->background_pids[state->num_bg_processes] = pgid; // Track by PGID
             strncpy(state->background_process_names[state->num_bg_processes], commands[0].args[0], MAX_PATH_LEN - 1);
-            state->background_process_names[state->num_bg_processes][MAX_PATH_LEN - 1] = '\0';
             state->num_bg_processes++;
-            printf("Shell: Started background process [%d] %s (PID %d)\n", state->num_bg_processes, commands[0].args[0], last_pid);
+            printf("Shell: Started background job [%d] %s (PGID %d)\n", state->num_bg_processes, commands[0].args[0], pgid);
         } else {
             print_shell_error("Maximum background processes reached.");
-            for (int i = 0; i < num_commands; i++) waitpid(pids[i], NULL, 0);
+            kill(-pgid, SIGKILL); // Kill the job if we can't track it
         }
     }
 }
@@ -247,22 +319,27 @@ static void check_background_processes(ShellState* state) {
     int current_valid_idx = 0;
     for (int i = 0; i < state->num_bg_processes; i++) {
         int status;
-        pid_t result = waitpid(state->background_pids[i], &status, WNOHANG);
+        // CRITICAL FIX: Use -pgid to wait for any process in the group.
+        // WNOHANG makes the call non-blocking.
+        pid_t result = waitpid(-state->background_pids[i], &status, WNOHANG);
 
-        if (result == state->background_pids[i]) {
-            if (WIFEXITED(status)) {
-                printf("\nShell: Background process '%s' (PID %d) exited normally with status %d.\n",
-                       state->background_process_names[i], state->background_pids[i], WEXITSTATUS(status));
-            } else if (WIFSIGNALED(status)) {
-                printf("\nShell: Background process '%s' (PID %d) exited abnormally due to signal %d.\n",
-                       state->background_process_names[i], state->background_pids[i], WTERMSIG(status));
-            }
-        } else if (result == 0) { // Still running
+        if (result > 0) { // A process in the group terminated.
+            // We consider the entire job terminated if one of its processes exits.
+            // A more complex shell might wait for all, but this is a robust simplification.
+            printf("\nShell: Background job '%s' (PGID %d) has terminated.\n",
+                   state->background_process_names[i], state->background_pids[i]);
+            // Do not copy this job to the compacted list, effectively removing it.
+        } else if (result == 0) { // No change in the process group, job is still running.
             if (i != current_valid_idx) {
                 state->background_pids[current_valid_idx] = state->background_pids[i];
                 strcpy(state->background_process_names[current_valid_idx], state->background_process_names[i]);
             }
             current_valid_idx++;
+        } else { // An error occurred, or the process group no longer exists.
+            if (errno != ECHILD) {
+                // This case is rare, but we should handle it.
+                // We assume the job is gone and remove it.
+            }
         }
     }
     state->num_bg_processes = current_valid_idx;

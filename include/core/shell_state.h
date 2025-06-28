@@ -48,6 +48,9 @@ typedef struct {
     char last_command_name[MAX_COMMAND_LEN];
     long time_taken_for_prompt;
 
+    // for keyboard interrupts
+    pid_t foreground_pgid;
+
 } ShellState;
 
 /**

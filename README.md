@@ -23,7 +23,10 @@ Shellby is a lightweight, custom shell implementation written in C. It emulates 
     - [8) `iman`](#8-iman)
     - [9) `activities`](#9-activities)
     - [10) `ping`](#10-ping)
-    - [11) Background Processes](#11-background-processes)
+    - [11) `neonate`](#11-neonate)
+    - [12) Background Processes](#12-background-processes)
+    - [13) Job Control and Signals](#13-job-control-and-signals)
+    - [14) `fg` and `bg`](#14-fg-and-bg)
   - [Key Design Features](#key-design-features)
   - [Limitations](#limitations)
   - [Future Scope](#future-scope)
@@ -231,7 +234,12 @@ Sends a specified signal to a process.
     <user@system:~> ping 12345 9
     ```
 
-### 11) Background Processes
+### 11) `neonate`
+Periodically prints the process ID of the most recently created process on the system.
+*   **Syntax:** `neonate -n <time_arg>`
+*   **Functionality:** Enters a loop that prints the latest PID found in `/proc` every `<time_arg>` seconds. The command actively listens for keyboard input and will terminate when the `x` key is pressed. This demonstrates non-blocking I/O by manipulating terminal settings.
+
+### 12) Background Processes
 Run any external command in the background by appending `&`.
 *   **Functionality:** The shell immediately returns to the prompt after launching the process. A notification is printed when the process starts and when it terminates.
     ```bash
@@ -241,6 +249,23 @@ Run any external command in the background by appending `&`.
     # ... after 5 seconds ...
     Shellby: Background process 'sleep' (PID 12345) exited normally with status 0.
     ```
+### 13) Job Control and Signals
+Shellby provides robust job control for managing foreground and background processes.
+
+*   **`Ctrl+C` (SIGINT):** Interrupts the currently running foreground process. If no process is running, it does nothing.
+*   **`Ctrl+Z` (SIGTSTP):** Suspends the currently running foreground process and moves it to the background with a "Stopped" state.
+*   **`Ctrl+D` (EOF):** Logs out of the shell. Before exiting, it sends a kill signal to all background jobs to ensure a clean shutdown.
+
+### 14) `fg` and `bg`
+Provides job control to manage background processes.
+
+*   **`fg <pid>`**
+    *   Brings a running or stopped background job to the foreground.
+    *   The shell gives terminal control to the process and waits for it to complete or be stopped.
+
+*   **`bg <pid>`**
+    *   Resumes a *stopped* background job, allowing it to run in the background.
+    *   The shell does not wait for the command and returns to the prompt immediately.
 
 ---
 
