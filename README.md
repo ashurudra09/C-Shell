@@ -280,11 +280,10 @@ Provides job control to manage background processes.
 
 ## Limitations
 
-*   **Built-in Commands in Pipelines:** Built-in commands (`warp`, `peek`, `seek`, `proclore`, `pastevents`, `iman`) cannot be used in a pipeline. They are only executed if they are the sole command on the line (or in a semicolon-separated list).
+*   **Built-in Commands in Pipelines:** Built-in commands (like `warp`, `peek`, `seek` etc) cannot be used in a pipeline. They are only executed if they are the sole command on the line (or in a semicolon-separated list).
 *   **`iman` Command:** Requires an active internet connection to fetch manual pages, unlike the system `man` command which uses local files.
 *   **Strict Spacing for Operators:** The parser requires spaces around piping and redirection operators. For example, `ls>output.txt` will fail, whereas `ls > output.txt` will succeed.
 *   **No `stderr` Redirection:** Only `stdin` and `stdout` can be redirected. `stderr` redirection (e.g., `2>`) is not supported.
-*   **No Job Control:** Does not implement `Ctrl+Z` for suspending jobs or `fg`/`bg` commands for job management.
 *   **Argument Parsing:** Does not handle arguments with spaces (e.g., `"a file with spaces.txt"`).
 
 ---
